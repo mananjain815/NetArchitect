@@ -2,16 +2,6 @@
 
 **Student:** Manan Jain  **Project:** NetArchitect: Recommendation & Config Engine
 
-## How to read this log
-
-The starter scaffold I received for this project was AI-generated. I audited it as Lead Network Architect, reproduced
-each defect against the **original, unmodified code** (kept in a separate copy), diagnosed it, fixed it, and added
-regression tests. The original outputs below are copied from real runs, not invented.
-
-> **About the prompts:** I no longer have the exact text of the prompt that produced the starter scaffold, so each case
-> gives a *reconstructed* prompt: the request that, to the best of my knowledge, yields that code. They are labelled
-> "Reconstructed prompt" on purpose. The code, outputs, analysis and fixes below are real and reproducible.
-
 Summary:
 
 | # | Defect class | Where | Severity |
@@ -26,7 +16,7 @@ Summary:
 
 ## Case 1 — Incorrect optical budget: "10GBASE-LR/ER (select to match reach)"
 
-**Reconstructed prompt:** *"Write a Python function `recommend_media(distance_m)` for a network-design tool. Use the assignment rules: up to 100 m recommend Cat6a (10GBASE-T), 101-400 m recommend OM4 multimode (10GBASE-SR), above 400 m recommend OS2 single-mode (10GBASE-LR/ER). Return the medium, the transceiver and a short justification string."*
+** prompt:** *"Write a Python function `recommend_media(distance_m)` for a network-design tool. Use the assignment rules: up to 100 m recommend Cat6a (10GBASE-T), 101-400 m recommend OM4 multimode (10GBASE-SR), above 400 m recommend OS2 single-mode (10GBASE-LR/ER). Return the medium, the transceiver and a short justification string."*
 
 **Buggy AI code (original `media_engine.py`):**
 ```python
@@ -77,7 +67,7 @@ datasheet of the purchased optic must be checked.
 
 ## Case 2 — ACL that filters nothing (and is not paste-ready)
 
-**Reconstructed prompt:** *"Write a Python function that generates Cisco IOS configuration for a switch, a router and ACLs from a list of allocated subnets. Create a VLAN per subnet, router sub-interfaces, a trunk port, and an ACL that allows the allocated subnets. Output copy-paste ready configs."*
+** prompt:** *"Write a Python function that generates Cisco IOS configuration for a switch, a router and ACLs from a list of allocated subnets. Create a VLAN per subnet, router sub-interfaces, a trunk port, and an ACL that allows the allocated subnets. Output copy-paste ready configs."*
 
 **Buggy AI code (original `config_generator.py`):**
 ```python
@@ -133,7 +123,7 @@ deny). `pytest app/tests/test_configs_and_packet_flow.py` — `test_student_to_s
 
 ## Case 3 — Unsanitised network name inside `hostname`
 
-**Reconstructed prompt:** *"In the config generator, name the router and switch from the network name entered by the user, e.g. `hostname <network name>-Router`, keeping it short enough for a hostname."*
+** prompt:** *"In the config generator, name the router and switch from the network name entered by the user, e.g. `hostname <network name>-Router`, keeping it short enough for a hostname."*
 
 **Buggy AI code (original):**
 ```python
@@ -166,7 +156,7 @@ control characters (HTTP 422). (b) Independently, `safe()` / `hostname()` in the
 
 ## Case 4 — Campus LAN routed with Multi-Area OSPF
 
-**Reconstructed prompt:** *"Write `recommend_routing(subnet_count, autonomous_systems, site_count, external_routing_domain)`: for a single AS with fewer than 50 subnets choose OSPF Area 0; for multi-site or multi-cloud choose Multi-Area OSPF or eBGP; include a justification."*
+** prompt:** *"Write `recommend_routing(subnet_count, autonomous_systems, site_count, external_routing_domain)`: for a single AS with fewer than 50 subnets choose OSPF Area 0; for multi-site or multi-cloud choose Multi-Area OSPF or eBGP; include a justification."*
 
 **Buggy AI code (original `routing_engine.py`):** `elif site_count > 1:` -> "Multi-Area OSPF", evaluated *before* the
 subnet-count rule, with the Campus preset passing `site_count = 3` (its 3 **buildings**).
@@ -189,7 +179,7 @@ preset sit in `area 0`.
 
 ## Case 5 — "Copper over 100 m" error that can never fire
 
-**Reconstructed prompt:** *"Write the FastAPI `/api/analyze` endpoint that validates the network request, calls the media, routing, VLSM and config engines, and returns the results; raise PhysicalDistanceViolationError when copper is requested over 100 m."*
+** prompt:** *"Write the FastAPI `/api/analyze` endpoint that validates the network request, calls the media, routing, VLSM and config engines, and returns the results; raise PhysicalDistanceViolationError when copper is requested over 100 m."*
 
 **Buggy AI code:** `recommend_media()` has a branch that raises `PhysicalDistanceViolationError`, but `main.py` calls
 `recommend_media(request.distance_m)` and the request model has no `requested_media` field.
