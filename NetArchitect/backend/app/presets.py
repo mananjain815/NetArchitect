@@ -1,0 +1,96 @@
+"""Three preset scenarios from the CIC-307 specification (sizes follow the assignment)."""
+
+PRESETS = {
+    # Profile 1: 3 buildings < 400 m, 1,600 endpoints (incl. PoE APs); Cat6a vs MMF, 802.1Q, RSTP, single-area OSPF
+    "campus_lan": {
+        "profile": "campus_lan",
+        "name": "Campus LAN",
+        "endpoints": 1600,
+        "distance_m": 350,            # longest inter-building backbone run
+        "access_distance_m": 90,      # longest horizontal (access) run
+        "bandwidth_mbps": 10000,
+        "access_bandwidth_mbps": 1000,
+        "requested_media": "auto",
+        "site_count": 1,              # one campus = one routing site
+        "building_count": 3,
+        "sites": [],
+        "root_cidr": "10.10.0.0/16",
+        "subnet_requests": [
+            {"name": "STUDENTS", "hosts": 800},
+            {"name": "FACULTY", "hosts": 300},
+            {"name": "STAFF_ADMIN", "hosts": 150},
+            {"name": "IOT_AP", "hosts": 250},
+            {"name": "SERVERS", "hosts": 100},
+            {"name": "MGMT", "hosts": 50},
+        ],
+        "autonomous_systems": 1,
+        "external_routing_domain": False,
+        "resiliency": "medium",
+        "wan_service": "p2p",
+        "max_latency_ms": None,
+    },
+    # Profile 2: HQ + 2 remote sites 15-35 km, 450 users, FinTech colo; OS2 SMF, EVPL, sub-5 ms QoS, dual-homed
+    "metro_man": {
+        "profile": "metro_man",
+        "name": "Metro MAN",
+        "endpoints": 450,
+        "distance_m": 22000,
+        "access_distance_m": 90,
+        "bandwidth_mbps": 10000,
+        "access_bandwidth_mbps": 1000,
+        "requested_media": "auto",
+        "site_count": 3,
+        "building_count": 1,
+        "sites": [
+            {"name": "HQ", "subnets": ["HQ_USERS", "FINTECH_SERVERS", "HQ_MGMT"], "external": False},
+            {"name": "REMOTE_A", "subnets": ["REMOTE_A_USERS"], "external": False},
+            {"name": "REMOTE_B", "subnets": ["REMOTE_B_USERS"], "external": False},
+        ],
+        "root_cidr": "10.20.0.0/16",
+        "subnet_requests": [
+            {"name": "HQ_USERS", "hosts": 250},
+            {"name": "REMOTE_A_USERS", "hosts": 100},
+            {"name": "REMOTE_B_USERS", "hosts": 100},
+            {"name": "FINTECH_SERVERS", "hosts": 50},
+            {"name": "HQ_MGMT", "hosts": 30},
+        ],
+        "autonomous_systems": 1,
+        "external_routing_domain": False,
+        "resiliency": "high",
+        "wan_service": "evpl",
+        "max_latency_ms": 5.0,
+    },
+    # Profile 3: 4 cities + cloud VPC, 2,000 IoT/scanners; IPsec VPN, multi-area OSPF + eBGP, summarisation
+    "global_wan": {
+        "profile": "global_wan",
+        "name": "Global WAN",
+        "endpoints": 2000,
+        "distance_m": 100000,
+        "access_distance_m": 90,
+        "bandwidth_mbps": 10000,
+        "access_bandwidth_mbps": 1000,
+        "requested_media": "auto",
+        "site_count": 5,
+        "building_count": 1,
+        "sites": [
+            {"name": "CITY_1", "subnets": ["CITY_1_IOT"], "external": False},
+            {"name": "CITY_2", "subnets": ["CITY_2_IOT"], "external": False},
+            {"name": "CITY_3", "subnets": ["CITY_3_IOT"], "external": False},
+            {"name": "CITY_4", "subnets": ["CITY_4_IOT"], "external": False},
+            {"name": "CLOUD_VPC", "subnets": ["CLOUD_SERVICES"], "external": True},
+        ],
+        "root_cidr": "10.30.0.0/16",
+        "subnet_requests": [
+            {"name": "CITY_1_IOT", "hosts": 500},
+            {"name": "CITY_2_IOT", "hosts": 500},
+            {"name": "CITY_3_IOT", "hosts": 500},
+            {"name": "CITY_4_IOT", "hosts": 400},
+            {"name": "CLOUD_SERVICES", "hosts": 100},
+        ],
+        "autonomous_systems": 2,
+        "external_routing_domain": True,
+        "resiliency": "high",
+        "wan_service": "ipsec",
+        "max_latency_ms": None,
+    },
+}

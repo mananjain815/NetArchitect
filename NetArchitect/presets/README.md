@@ -1,0 +1,1 @@
+Preset definitions currently live in `backend/app/presets.py`. The frontend loads them through the API. This folder is reserved for exported JSON preset snapshots if you choose to externalize them later.

@@ -1,0 +1,1061 @@
+!======================================================================
+! FILE: CITY-1-L3SW.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-1-L3SW
+!
+! NetArchitect - CITY_1 multilayer switch: SVIs, RSTP, DHCP, ACLs, OSPF
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+ip routing
+!
+spanning-tree mode rapid-pvst
+spanning-tree vlan 10 priority 4096
+!
+vlan 999
+ name NATIVE_UNUSED
+vlan 10
+ name CITY_1_IOT
+!
+ip dhcp excluded-address 10.30.0.1 10.30.0.10
+ip dhcp pool CITY_1_IOT
+ network 10.30.0.0 255.255.254.0
+ default-router 10.30.0.1
+!
+interface Vlan10
+ description GW-CITY_1_IOT
+ ip address 10.30.0.1 255.255.254.0
+ ip access-group ACL-CITY_1_IOT-IN in
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description UPLINK-TO-CITY-1-RTR
+ no switchport
+ ip address 10.30.8.130 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+interface GigabitEthernet0/2
+ description TRUNK-TO-CITY-1-ACCESS-SW1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport nonegotiate
+ channel-group 1 mode active
+ no shutdown
+!
+interface GigabitEthernet0/3
+ description TRUNK-TO-CITY-1-ACCESS-SW1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport nonegotiate
+ channel-group 1 mode active
+ no shutdown
+!
+interface Port-channel1
+ description LACP-TRUNK-TO-ACCESS
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10
+!
+! --- ACL definitions (applied inbound on each SVI above) ---
+ip access-list extended ACL-CITY_1_IOT-IN
+ remark NetArchitect policy: role=iot subnet=10.30.0.0/23
+ permit udp host 0.0.0.0 host 255.255.255.255 eq 67
+ permit udp 10.30.0.0 0.0.1.255 host 10.30.0.1 eq 67
+ permit udp 10.30.0.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 53
+ permit tcp 10.30.0.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 443
+ permit udp 10.30.0.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 123
+ permit tcp 10.30.0.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 8883
+ deny ip 10.30.0.0 0.0.1.255 10.30.0.0 0.0.255.255
+ permit ip 10.30.0.0 0.0.1.255 any
+ deny ip any any
+!
+router ospf 1
+ router-id 10.255.1.1
+ passive-interface default
+ no passive-interface GigabitEthernet0/1
+ auto-cost reference-bandwidth 10000
+ network 10.30.0.0 0.0.1.255 area 0
+ network 10.30.8.130 0.0.0.0 area 0
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CITY-1-RTR.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-1-RTR
+!
+! NetArchitect - CITY_1 router: routing, WAN links, IPsec
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+interface GigabitEthernet0/0
+ description DOWNLINK-TO-CITY-1-L3SW
+ ip address 10.30.8.129 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- IKE phase 1 / IPsec phase 2 ---
+crypto isakmp policy 10
+ encryption aes 256
+ hash sha256
+ authentication pre-share
+ group 14
+ lifetime 86400
+! PACKET TRACER: use ' hash sha' and ' group 5' instead of sha256 / group 14
+crypto ipsec transform-set TS-AES256 esp-aes 256 esp-sha256-hmac
+ mode tunnel
+! PACKET TRACER: use 'esp-aes 256 esp-sha-hmac'
+!
+access-list 101 permit ip 10.30.0.0 0.0.255.255 10.30.2.0 0.0.1.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.150
+crypto map VPN-1-CITY_2 10 ipsec-isakmp
+ set peer 10.30.8.150
+ set transform-set TS-AES256
+ match address 101
+!
+interface GigabitEthernet0/1
+ description WAN-TO-CITY-2-RTR
+ ip address 10.30.8.149 255.255.255.252
+ crypto map VPN-1-CITY_2
+ ip ospf network point-to-point
+ ip ospf cost 10
+ no shutdown
+!
+access-list 102 permit ip 10.30.0.0 0.0.255.255 10.30.2.0 0.0.1.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.154
+crypto map VPN-2-CITY_2 10 ipsec-isakmp
+ set peer 10.30.8.154
+ set transform-set TS-AES256
+ match address 102
+!
+interface GigabitEthernet0/2
+ description WAN-TO-CITY-2-RTR
+ ip address 10.30.8.153 255.255.255.252
+ crypto map VPN-2-CITY_2
+ ip ospf network point-to-point
+ ip ospf cost 100
+ no shutdown
+!
+access-list 103 permit ip 10.30.0.0 0.0.255.255 10.30.4.0 0.0.1.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.158
+crypto map VPN-1-CITY_3 10 ipsec-isakmp
+ set peer 10.30.8.158
+ set transform-set TS-AES256
+ match address 103
+!
+interface GigabitEthernet0/3
+ description WAN-TO-CITY-3-RTR
+ ip address 10.30.8.157 255.255.255.252
+ crypto map VPN-1-CITY_3
+ ip ospf network point-to-point
+ ip ospf cost 10
+ no shutdown
+!
+access-list 104 permit ip 10.30.0.0 0.0.255.255 10.30.4.0 0.0.1.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.162
+crypto map VPN-2-CITY_3 10 ipsec-isakmp
+ set peer 10.30.8.162
+ set transform-set TS-AES256
+ match address 104
+!
+interface GigabitEthernet0/4
+ description WAN-TO-CITY-3-RTR
+ ip address 10.30.8.161 255.255.255.252
+ crypto map VPN-2-CITY_3
+ ip ospf network point-to-point
+ ip ospf cost 100
+ no shutdown
+!
+access-list 105 permit ip 10.30.0.0 0.0.255.255 10.30.6.0 0.0.1.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.166
+crypto map VPN-1-CITY_4 10 ipsec-isakmp
+ set peer 10.30.8.166
+ set transform-set TS-AES256
+ match address 105
+!
+interface GigabitEthernet0/5
+ description WAN-TO-CITY-4-RTR
+ ip address 10.30.8.165 255.255.255.252
+ crypto map VPN-1-CITY_4
+ ip ospf network point-to-point
+ ip ospf cost 10
+ no shutdown
+!
+access-list 106 permit ip 10.30.0.0 0.0.255.255 10.30.6.0 0.0.1.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.170
+crypto map VPN-2-CITY_4 10 ipsec-isakmp
+ set peer 10.30.8.170
+ set transform-set TS-AES256
+ match address 106
+!
+interface GigabitEthernet0/6
+ description WAN-TO-CITY-4-RTR
+ ip address 10.30.8.169 255.255.255.252
+ crypto map VPN-2-CITY_4
+ ip ospf network point-to-point
+ ip ospf cost 100
+ no shutdown
+!
+access-list 107 permit ip 10.30.0.0 0.0.255.255 10.30.8.0 0.0.0.127
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.174
+crypto map VPN-1-CLOUD_VPC 10 ipsec-isakmp
+ set peer 10.30.8.174
+ set transform-set TS-AES256
+ match address 107
+!
+interface GigabitEthernet0/7
+ description WAN-TO-CLOUD-VPC-RTR
+ ip address 10.30.8.173 255.255.255.252
+ crypto map VPN-1-CLOUD_VPC
+ no shutdown
+!
+router ospf 1
+ router-id 10.255.1.2
+ auto-cost reference-bandwidth 10000
+ network 10.30.8.129 0.0.0.0 area 0
+ network 10.30.8.149 0.0.0.0 area 1
+ network 10.30.8.153 0.0.0.0 area 1
+ network 10.30.8.157 0.0.0.0 area 2
+ network 10.30.8.161 0.0.0.0 area 2
+ network 10.30.8.165 0.0.0.0 area 3
+ network 10.30.8.169 0.0.0.0 area 3
+ area 1 range 10.30.2.0 255.255.254.0
+ area 2 range 10.30.4.0 255.255.254.0
+ area 3 range 10.30.6.0 255.255.254.0
+ redistribute bgp 65001 subnets
+!
+router bgp 65001
+ bgp router-id 10.255.1.2
+ bgp log-neighbor-changes
+ neighbor 10.30.8.174 remote-as 65002
+ neighbor 10.30.8.174 description EBGP-AS65002
+ neighbor 10.30.8.174 prefix-list PL-OUT out
+ neighbor 10.30.8.174 prefix-list PL-IN in
+ network 10.30.0.0 mask 255.255.248.0
+!
+ip prefix-list PL-OUT seq 5 permit 10.30.0.0/21
+ip prefix-list PL-IN seq 5 permit 10.30.8.0/25
+ip route 10.30.0.0 255.255.248.0 Null0
+! Null0 route anchors the aggregate so BGP can originate it (route summarisation)
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CITY-1-ACCESS-SW1.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-1-ACCESS-SW1
+!
+! NetArchitect - CITY_1 access switch (template - replicate per closet): RSTP, port security
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+spanning-tree mode rapid-pvst
+spanning-tree portfast bpduguard default
+!
+vlan 999
+ name NATIVE_UNUSED
+vlan 10
+ name CITY_1_IOT
+!
+interface range FastEthernet0/1 - 4
+ description ACCESS-CITY_1_IOT
+ switchport mode access
+ switchport access vlan 10
+ switchport nonegotiate
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ no shutdown
+!
+interface range FastEthernet0/5 - 24
+ description UNUSED-PARKED
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+!
+interface GigabitEthernet0/1
+ description TRUNK-TO-CITY-1-L3SW
+ switchport mode trunk
+ switchport nonegotiate
+ channel-group 1 mode active
+ no shutdown
+!
+interface GigabitEthernet0/2
+ description TRUNK-TO-CITY-1-L3SW
+ switchport mode trunk
+ switchport nonegotiate
+ channel-group 1 mode active
+ no shutdown
+!
+interface Port-channel1
+ description LACP-TRUNK-TO-L3SW
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10
+!
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CITY-2-L3SW.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-2-L3SW
+!
+! NetArchitect - CITY_2 multilayer switch: SVIs, RSTP, DHCP, ACLs, OSPF
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+ip routing
+!
+spanning-tree mode rapid-pvst
+spanning-tree vlan 20 priority 4096
+!
+vlan 999
+ name NATIVE_UNUSED
+vlan 20
+ name CITY_2_IOT
+!
+ip dhcp excluded-address 10.30.2.1 10.30.2.10
+ip dhcp pool CITY_2_IOT
+ network 10.30.2.0 255.255.254.0
+ default-router 10.30.2.1
+!
+interface Vlan20
+ description GW-CITY_2_IOT
+ ip address 10.30.2.1 255.255.254.0
+ ip access-group ACL-CITY_2_IOT-IN in
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description UPLINK-TO-CITY-2-RTR
+ no switchport
+ ip address 10.30.8.134 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- ACL definitions (applied inbound on each SVI above) ---
+ip access-list extended ACL-CITY_2_IOT-IN
+ remark NetArchitect policy: role=iot subnet=10.30.2.0/23
+ permit udp host 0.0.0.0 host 255.255.255.255 eq 67
+ permit udp 10.30.2.0 0.0.1.255 host 10.30.2.1 eq 67
+ permit udp 10.30.2.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 53
+ permit tcp 10.30.2.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 443
+ permit udp 10.30.2.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 123
+ permit tcp 10.30.2.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 8883
+ deny ip 10.30.2.0 0.0.1.255 10.30.0.0 0.0.255.255
+ permit ip 10.30.2.0 0.0.1.255 any
+ deny ip any any
+!
+router ospf 1
+ router-id 10.255.2.1
+ passive-interface default
+ no passive-interface GigabitEthernet0/1
+ auto-cost reference-bandwidth 10000
+ network 10.30.2.0 0.0.1.255 area 1
+ network 10.30.8.134 0.0.0.0 area 1
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CITY-2-RTR.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-2-RTR
+!
+! NetArchitect - CITY_2 router: routing, WAN links, IPsec
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+interface GigabitEthernet0/0
+ description DOWNLINK-TO-CITY-2-L3SW
+ ip address 10.30.8.133 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- IKE phase 1 / IPsec phase 2 ---
+crypto isakmp policy 10
+ encryption aes 256
+ hash sha256
+ authentication pre-share
+ group 14
+ lifetime 86400
+! PACKET TRACER: use ' hash sha' and ' group 5' instead of sha256 / group 14
+crypto ipsec transform-set TS-AES256 esp-aes 256 esp-sha256-hmac
+ mode tunnel
+! PACKET TRACER: use 'esp-aes 256 esp-sha-hmac'
+!
+access-list 101 permit ip 10.30.2.0 0.0.1.255 10.30.0.0 0.0.255.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.149
+crypto map VPN-1-CITY_2 10 ipsec-isakmp
+ set peer 10.30.8.149
+ set transform-set TS-AES256
+ match address 101
+!
+interface GigabitEthernet0/1
+ description WAN-TO-CITY-1-RTR
+ ip address 10.30.8.150 255.255.255.252
+ crypto map VPN-1-CITY_2
+ ip ospf network point-to-point
+ ip ospf cost 10
+ no shutdown
+!
+access-list 102 permit ip 10.30.2.0 0.0.1.255 10.30.0.0 0.0.255.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.153
+crypto map VPN-2-CITY_2 10 ipsec-isakmp
+ set peer 10.30.8.153
+ set transform-set TS-AES256
+ match address 102
+!
+interface GigabitEthernet0/2
+ description WAN-TO-CITY-1-RTR
+ ip address 10.30.8.154 255.255.255.252
+ crypto map VPN-2-CITY_2
+ ip ospf network point-to-point
+ ip ospf cost 100
+ no shutdown
+!
+router ospf 1
+ router-id 10.255.2.2
+ auto-cost reference-bandwidth 10000
+ network 10.30.8.133 0.0.0.0 area 1
+ network 10.30.8.150 0.0.0.0 area 1
+ network 10.30.8.154 0.0.0.0 area 1
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CITY-3-L3SW.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-3-L3SW
+!
+! NetArchitect - CITY_3 multilayer switch: SVIs, RSTP, DHCP, ACLs, OSPF
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+ip routing
+!
+spanning-tree mode rapid-pvst
+spanning-tree vlan 30 priority 4096
+!
+vlan 999
+ name NATIVE_UNUSED
+vlan 30
+ name CITY_3_IOT
+!
+ip dhcp excluded-address 10.30.4.1 10.30.4.10
+ip dhcp pool CITY_3_IOT
+ network 10.30.4.0 255.255.254.0
+ default-router 10.30.4.1
+!
+interface Vlan30
+ description GW-CITY_3_IOT
+ ip address 10.30.4.1 255.255.254.0
+ ip access-group ACL-CITY_3_IOT-IN in
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description UPLINK-TO-CITY-3-RTR
+ no switchport
+ ip address 10.30.8.138 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- ACL definitions (applied inbound on each SVI above) ---
+ip access-list extended ACL-CITY_3_IOT-IN
+ remark NetArchitect policy: role=iot subnet=10.30.4.0/23
+ permit udp host 0.0.0.0 host 255.255.255.255 eq 67
+ permit udp 10.30.4.0 0.0.1.255 host 10.30.4.1 eq 67
+ permit udp 10.30.4.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 53
+ permit tcp 10.30.4.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 443
+ permit udp 10.30.4.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 123
+ permit tcp 10.30.4.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 8883
+ deny ip 10.30.4.0 0.0.1.255 10.30.0.0 0.0.255.255
+ permit ip 10.30.4.0 0.0.1.255 any
+ deny ip any any
+!
+router ospf 1
+ router-id 10.255.3.1
+ passive-interface default
+ no passive-interface GigabitEthernet0/1
+ auto-cost reference-bandwidth 10000
+ network 10.30.4.0 0.0.1.255 area 2
+ network 10.30.8.138 0.0.0.0 area 2
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CITY-3-RTR.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-3-RTR
+!
+! NetArchitect - CITY_3 router: routing, WAN links, IPsec
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+interface GigabitEthernet0/0
+ description DOWNLINK-TO-CITY-3-L3SW
+ ip address 10.30.8.137 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- IKE phase 1 / IPsec phase 2 ---
+crypto isakmp policy 10
+ encryption aes 256
+ hash sha256
+ authentication pre-share
+ group 14
+ lifetime 86400
+! PACKET TRACER: use ' hash sha' and ' group 5' instead of sha256 / group 14
+crypto ipsec transform-set TS-AES256 esp-aes 256 esp-sha256-hmac
+ mode tunnel
+! PACKET TRACER: use 'esp-aes 256 esp-sha-hmac'
+!
+access-list 101 permit ip 10.30.4.0 0.0.1.255 10.30.0.0 0.0.255.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.157
+crypto map VPN-1-CITY_3 10 ipsec-isakmp
+ set peer 10.30.8.157
+ set transform-set TS-AES256
+ match address 101
+!
+interface GigabitEthernet0/1
+ description WAN-TO-CITY-1-RTR
+ ip address 10.30.8.158 255.255.255.252
+ crypto map VPN-1-CITY_3
+ ip ospf network point-to-point
+ ip ospf cost 10
+ no shutdown
+!
+access-list 102 permit ip 10.30.4.0 0.0.1.255 10.30.0.0 0.0.255.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.161
+crypto map VPN-2-CITY_3 10 ipsec-isakmp
+ set peer 10.30.8.161
+ set transform-set TS-AES256
+ match address 102
+!
+interface GigabitEthernet0/2
+ description WAN-TO-CITY-1-RTR
+ ip address 10.30.8.162 255.255.255.252
+ crypto map VPN-2-CITY_3
+ ip ospf network point-to-point
+ ip ospf cost 100
+ no shutdown
+!
+router ospf 1
+ router-id 10.255.3.2
+ auto-cost reference-bandwidth 10000
+ network 10.30.8.137 0.0.0.0 area 2
+ network 10.30.8.158 0.0.0.0 area 2
+ network 10.30.8.162 0.0.0.0 area 2
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CITY-4-L3SW.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-4-L3SW
+!
+! NetArchitect - CITY_4 multilayer switch: SVIs, RSTP, DHCP, ACLs, OSPF
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+ip routing
+!
+spanning-tree mode rapid-pvst
+spanning-tree vlan 40 priority 4096
+!
+vlan 999
+ name NATIVE_UNUSED
+vlan 40
+ name CITY_4_IOT
+!
+ip dhcp excluded-address 10.30.6.1 10.30.6.10
+ip dhcp pool CITY_4_IOT
+ network 10.30.6.0 255.255.254.0
+ default-router 10.30.6.1
+!
+interface Vlan40
+ description GW-CITY_4_IOT
+ ip address 10.30.6.1 255.255.254.0
+ ip access-group ACL-CITY_4_IOT-IN in
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description UPLINK-TO-CITY-4-RTR
+ no switchport
+ ip address 10.30.8.142 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- ACL definitions (applied inbound on each SVI above) ---
+ip access-list extended ACL-CITY_4_IOT-IN
+ remark NetArchitect policy: role=iot subnet=10.30.6.0/23
+ permit udp host 0.0.0.0 host 255.255.255.255 eq 67
+ permit udp 10.30.6.0 0.0.1.255 host 10.30.6.1 eq 67
+ permit udp 10.30.6.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 53
+ permit tcp 10.30.6.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 443
+ permit udp 10.30.6.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 123
+ permit tcp 10.30.6.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 8883
+ deny ip 10.30.6.0 0.0.1.255 10.30.0.0 0.0.255.255
+ permit ip 10.30.6.0 0.0.1.255 any
+ deny ip any any
+!
+router ospf 1
+ router-id 10.255.4.1
+ passive-interface default
+ no passive-interface GigabitEthernet0/1
+ auto-cost reference-bandwidth 10000
+ network 10.30.6.0 0.0.1.255 area 3
+ network 10.30.8.142 0.0.0.0 area 3
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CITY-4-RTR.cfg
+!======================================================================
+enable
+configure terminal
+hostname CITY-4-RTR
+!
+! NetArchitect - CITY_4 router: routing, WAN links, IPsec
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+interface GigabitEthernet0/0
+ description DOWNLINK-TO-CITY-4-L3SW
+ ip address 10.30.8.141 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- IKE phase 1 / IPsec phase 2 ---
+crypto isakmp policy 10
+ encryption aes 256
+ hash sha256
+ authentication pre-share
+ group 14
+ lifetime 86400
+! PACKET TRACER: use ' hash sha' and ' group 5' instead of sha256 / group 14
+crypto ipsec transform-set TS-AES256 esp-aes 256 esp-sha256-hmac
+ mode tunnel
+! PACKET TRACER: use 'esp-aes 256 esp-sha-hmac'
+!
+access-list 101 permit ip 10.30.6.0 0.0.1.255 10.30.0.0 0.0.255.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.165
+crypto map VPN-1-CITY_4 10 ipsec-isakmp
+ set peer 10.30.8.165
+ set transform-set TS-AES256
+ match address 101
+!
+interface GigabitEthernet0/1
+ description WAN-TO-CITY-1-RTR
+ ip address 10.30.8.166 255.255.255.252
+ crypto map VPN-1-CITY_4
+ ip ospf network point-to-point
+ ip ospf cost 10
+ no shutdown
+!
+access-list 102 permit ip 10.30.6.0 0.0.1.255 10.30.0.0 0.0.255.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.169
+crypto map VPN-2-CITY_4 10 ipsec-isakmp
+ set peer 10.30.8.169
+ set transform-set TS-AES256
+ match address 102
+!
+interface GigabitEthernet0/2
+ description WAN-TO-CITY-1-RTR
+ ip address 10.30.8.170 255.255.255.252
+ crypto map VPN-2-CITY_4
+ ip ospf network point-to-point
+ ip ospf cost 100
+ no shutdown
+!
+router ospf 1
+ router-id 10.255.4.2
+ auto-cost reference-bandwidth 10000
+ network 10.30.8.141 0.0.0.0 area 3
+ network 10.30.8.166 0.0.0.0 area 3
+ network 10.30.8.170 0.0.0.0 area 3
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CLOUD-VPC-L3SW.cfg
+!======================================================================
+enable
+configure terminal
+hostname CLOUD-VPC-L3SW
+!
+! NetArchitect - CLOUD_VPC multilayer switch: SVIs, RSTP, DHCP, ACLs, OSPF
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+ip routing
+!
+spanning-tree mode rapid-pvst
+spanning-tree vlan 50 priority 4096
+!
+vlan 999
+ name NATIVE_UNUSED
+vlan 50
+ name CLOUD_SERVICES
+!
+interface Vlan50
+ description GW-CLOUD_SERVICES
+ ip address 10.30.8.1 255.255.255.128
+ ip access-group ACL-CLOUD_SERVICES-IN in
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description UPLINK-TO-CLOUD-VPC-RTR
+ no switchport
+ ip address 10.30.8.146 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- ACL definitions (applied inbound on each SVI above) ---
+ip access-list extended ACL-CLOUD_SERVICES-IN
+ remark NetArchitect policy: role=server subnet=10.30.8.0/25
+ permit tcp 10.30.8.0 0.0.0.127 any established
+ permit udp 10.30.8.0 0.0.0.127 eq 53 any
+ permit icmp 10.30.8.0 0.0.0.127 any echo-reply
+ deny ip any any
+!
+router ospf 1
+ router-id 10.255.5.1
+ passive-interface default
+ no passive-interface GigabitEthernet0/1
+ auto-cost reference-bandwidth 10000
+ network 10.30.8.0 0.0.0.127 area 0
+ network 10.30.8.146 0.0.0.0 area 0
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: CLOUD-VPC-RTR.cfg
+!======================================================================
+enable
+configure terminal
+hostname CLOUD-VPC-RTR
+!
+! NetArchitect - CLOUD_VPC router: routing, WAN links, IPsec
+! Replace every CHANGE_ME_BEFORE_DEPLOY value before production use.
+!
+no ip domain-lookup
+service password-encryption
+ip domain-name netarchitect.local
+enable secret CHANGE_ME_BEFORE_DEPLOY
+username netadmin privilege 15 secret CHANGE_ME_BEFORE_DEPLOY
+crypto key generate rsa modulus 2048
+ip ssh version 2
+!
+interface GigabitEthernet0/0
+ description DOWNLINK-TO-CLOUD-VPC-L3SW
+ ip address 10.30.8.145 255.255.255.252
+ ip ospf network point-to-point
+ no shutdown
+!
+! --- IKE phase 1 / IPsec phase 2 ---
+crypto isakmp policy 10
+ encryption aes 256
+ hash sha256
+ authentication pre-share
+ group 14
+ lifetime 86400
+! PACKET TRACER: use ' hash sha' and ' group 5' instead of sha256 / group 14
+crypto ipsec transform-set TS-AES256 esp-aes 256 esp-sha256-hmac
+ mode tunnel
+! PACKET TRACER: use 'esp-aes 256 esp-sha-hmac'
+!
+access-list 101 permit ip 10.30.8.0 0.0.0.127 10.30.0.0 0.0.255.255
+crypto isakmp key CHANGE_ME_BEFORE_DEPLOY address 10.30.8.173
+crypto map VPN-1-CLOUD_VPC 10 ipsec-isakmp
+ set peer 10.30.8.173
+ set transform-set TS-AES256
+ match address 101
+!
+interface GigabitEthernet0/1
+ description WAN-TO-CITY-1-RTR
+ ip address 10.30.8.174 255.255.255.252
+ crypto map VPN-1-CLOUD_VPC
+ no shutdown
+!
+router ospf 1
+ router-id 10.255.5.2
+ auto-cost reference-bandwidth 10000
+ network 10.30.8.145 0.0.0.0 area 0
+ redistribute bgp 65002 subnets
+!
+router bgp 65002
+ bgp router-id 10.255.5.2
+ bgp log-neighbor-changes
+ neighbor 10.30.8.173 remote-as 65001
+ neighbor 10.30.8.173 description EBGP-AS65001
+ neighbor 10.30.8.173 prefix-list PL-OUT out
+ neighbor 10.30.8.173 prefix-list PL-IN in
+ network 10.30.8.0 mask 255.255.255.128
+!
+ip prefix-list PL-OUT seq 5 permit 10.30.8.0/25
+ip prefix-list PL-IN seq 5 permit 10.30.0.0/21
+!
+line console 0
+ logging synchronous
+ exec-timeout 10 0
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 10 0
+!
+end
+write memory
+
+!======================================================================
+! FILE: POLICY-ACLS.cfg
+!======================================================================
+enable
+configure terminal
+!
+! NetArchitect inter-VLAN policy bundle (same ACLs are already inside the L3SW files).
+! Apply with:  interface VlanX / ip access-group <name> in
+ip access-list extended ACL-CITY_1_IOT-IN
+ remark NetArchitect policy: role=iot subnet=10.30.0.0/23
+ permit udp host 0.0.0.0 host 255.255.255.255 eq 67
+ permit udp 10.30.0.0 0.0.1.255 host 10.30.0.1 eq 67
+ permit udp 10.30.0.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 53
+ permit tcp 10.30.0.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 443
+ permit udp 10.30.0.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 123
+ permit tcp 10.30.0.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 8883
+ deny ip 10.30.0.0 0.0.1.255 10.30.0.0 0.0.255.255
+ permit ip 10.30.0.0 0.0.1.255 any
+ deny ip any any
+ip access-list extended ACL-CITY_2_IOT-IN
+ remark NetArchitect policy: role=iot subnet=10.30.2.0/23
+ permit udp host 0.0.0.0 host 255.255.255.255 eq 67
+ permit udp 10.30.2.0 0.0.1.255 host 10.30.2.1 eq 67
+ permit udp 10.30.2.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 53
+ permit tcp 10.30.2.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 443
+ permit udp 10.30.2.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 123
+ permit tcp 10.30.2.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 8883
+ deny ip 10.30.2.0 0.0.1.255 10.30.0.0 0.0.255.255
+ permit ip 10.30.2.0 0.0.1.255 any
+ deny ip any any
+ip access-list extended ACL-CITY_3_IOT-IN
+ remark NetArchitect policy: role=iot subnet=10.30.4.0/23
+ permit udp host 0.0.0.0 host 255.255.255.255 eq 67
+ permit udp 10.30.4.0 0.0.1.255 host 10.30.4.1 eq 67
+ permit udp 10.30.4.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 53
+ permit tcp 10.30.4.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 443
+ permit udp 10.30.4.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 123
+ permit tcp 10.30.4.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 8883
+ deny ip 10.30.4.0 0.0.1.255 10.30.0.0 0.0.255.255
+ permit ip 10.30.4.0 0.0.1.255 any
+ deny ip any any
+ip access-list extended ACL-CITY_4_IOT-IN
+ remark NetArchitect policy: role=iot subnet=10.30.6.0/23
+ permit udp host 0.0.0.0 host 255.255.255.255 eq 67
+ permit udp 10.30.6.0 0.0.1.255 host 10.30.6.1 eq 67
+ permit udp 10.30.6.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 53
+ permit tcp 10.30.6.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 443
+ permit udp 10.30.6.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 123
+ permit tcp 10.30.6.0 0.0.1.255 10.30.8.0 0.0.0.127 eq 8883
+ deny ip 10.30.6.0 0.0.1.255 10.30.0.0 0.0.255.255
+ permit ip 10.30.6.0 0.0.1.255 any
+ deny ip any any
+ip access-list extended ACL-CLOUD_SERVICES-IN
+ remark NetArchitect policy: role=server subnet=10.30.8.0/25
+ permit tcp 10.30.8.0 0.0.0.127 any established
+ permit udp 10.30.8.0 0.0.0.127 eq 53 any
+ permit icmp 10.30.8.0 0.0.0.127 any echo-reply
+ deny ip any any
+!
+end
+write memory
